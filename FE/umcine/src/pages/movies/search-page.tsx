@@ -1,8 +1,8 @@
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 
-import { useEffect, useState, type FormEvent } from "react";
-import { searchMovies } from "../../api/movies/search-movies";
-import type { TmdbMovieListResponse } from "../../api/movies/models";
+import { useState, type FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { movieSearchQueryOptions } from "../../queries/movie-query-options";
 import RequestStatus from "../../components/movies/request-status";
 import MovieImage from "../../components/movies/movie-image";
 import { getTmdbPosterUrl } from "../../utils/movies/tmdb-image";
@@ -19,7 +19,7 @@ export function SearchPage() {
     from: "/search",
   });
 
-  const normalizedQuery = query?.trim().toLowerCase() ?? "";
+  const normalizedQuery = query?.trim() ?? "";
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -109,23 +109,7 @@ export function SearchPage() {
         </form>
 
         {/* 검색어 없음 */}
-        {!normalizedQuery ? (
-          <div className="flex min-h-[300px] flex-col items-center justify-center rounded-3xl border border-dashed border-zinc-300 bg-white px-6 text-center">
-            <div className="mb-4 text-5xl">🎬</div>
-
-            <h2 className="text-xl font-bold text-zinc-900">
-              찾고 싶은 영화를 검색해보세요
-            </h2>
-
-            <p className="mt-2 text-sm leading-6 text-zinc-500">
-              영화 제목 또는 영문 원제를 입력하면
-              <br />
-              일치하는 영화를 찾아드릴게요.
-            </p>
-          </div>
-        ) : (
-          <SearchResults key={normalizedQuery} query={normalizedQuery} />
-        )}
+        <SearchResults key={normalizedQuery} query={normalizedQuery} />
       </section>
     </main>
   );
@@ -133,14 +117,7 @@ export function SearchPage() {
 
 function SearchResults({ query }: { query: string }) {
   const [page, setPage] = useState(1);
-  return (
-    <SearchResultPage
-      key={page}
-      query={query}
-      page={page}
-      onPageChange={setPage}
-    />
-  );
+  return <SearchResultPage query={query} page={page} onPageChange={setPage} />;
 }
 function SearchResultPage({
   query,
@@ -151,35 +128,38 @@ function SearchResultPage({
   page: number;
   onPageChange: (page: number) => void;
 }) {
-  const [data, setData] = useState<TmdbMovieListResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    const controller = new AbortController();
-    searchMovies({ query, page, signal: controller.signal })
-      .then((response) => {
-        if (!controller.signal.aborted) setData(response);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted)
-          setErrorMessage("검색 결과를 불러오지 못했어요.");
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsLoading(false);
-      });
-    return () => controller.abort();
-  }, [query, page, attempt]);
-  function retry() {
-    setErrorMessage("");
-    setIsLoading(true);
-    setAttempt((value) => value + 1);
-  }
-  if (isLoading || errorMessage)
+  const { data, isLoading, isError, isSuccess, refetch } = useQuery(
+    movieSearchQueryOptions(query, page),
+  );
+  // A disabled query can be pending without fetching. Show the search prompt first.
+  if (!query)
     return (
-      <RequestStatus loading={isLoading} error={errorMessage} onRetry={retry} />
+      <div className="flex min-h-[300px] flex-col items-center justify-center rounded-3xl border border-dashed border-zinc-300 bg-white px-6 text-center">
+        <div className="mb-4 text-5xl">🎬</div>
+
+        <h2 className="text-xl font-bold text-zinc-900">
+          찾고 싶은 영화를 검색해보세요
+        </h2>
+
+        <p className="mt-2 text-sm leading-6 text-zinc-500">
+          영화 제목 또는 영문 원제를 입력하면
+          <br />
+          일치하는 영화를 찾아드릴게요.
+        </p>
+      </div>
     );
-  const searchResults = data?.results ?? [];
+  if (isLoading || isError)
+    return (
+      <RequestStatus
+        loading={isLoading}
+        error={isError ? "검색 결과를 불러오지 못했어요." : undefined}
+        onRetry={() => {
+          void refetch();
+        }}
+      />
+    );
+  const searchResults = isSuccess ? data.results : [];
+
   return (
     <>
       {/* Result Header */}

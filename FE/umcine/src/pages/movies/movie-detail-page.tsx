@@ -1,9 +1,8 @@
 import { Link, useParams } from "@tanstack/react-router";
 
 import BookmarkButton from "../../components/movies/bookmark-button";
-import { useEffect, useState } from "react";
-import { getMovieDetail } from "../../api/movies/get-movie-detail";
-import type { TmdbMovieDetail } from "../../api/movies/models";
+import { useQuery } from "@tanstack/react-query";
+import { movieDetailQueryOptions } from "../../queries/movie-query-options";
 import { getMovieDetailErrorMessage } from "../../utils/movies/get-movie-detail-error-message";
 import {
   getTmdbPosterUrl,
@@ -18,42 +17,29 @@ export function MovieDetailPage() {
   });
 
   const id = Number(movieId);
-  if (!Number.isInteger(id) || id <= 0)
+  const isValidMovieId = Number.isInteger(id) && id > 0;
+  const {
+    data: movie,
+    isPending,
+    isError,
+    error,
+    refetch,
+  } = useQuery(movieDetailQueryOptions(id));
+  if (!isValidMovieId)
     return (
       <main className="p-12 text-center" role="alert">
         올바르지 않은 영화 번호예요.
       </main>
     );
-  return <MovieDetail key={id} movieId={id} />;
-}
-function MovieDetail({ movieId }: { movieId: number }) {
-  const [movie, setMovie] = useState<TmdbMovieDetail | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    const controller = new AbortController();
-    getMovieDetail(movieId, controller.signal)
-      .then((response) => {
-        if (!controller.signal.aborted) setMovie(response);
-      })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted)
-          setErrorMessage(getMovieDetailErrorMessage(error));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsLoading(false);
-      });
-    return () => controller.abort();
-  }, [movieId, attempt]);
-  function retry() {
-    setErrorMessage("");
-    setIsLoading(true);
-    setAttempt((value) => value + 1);
-  }
-  if (isLoading || errorMessage)
+  if (isPending || isError)
     return (
-      <RequestStatus loading={isLoading} error={errorMessage} onRetry={retry} />
+      <RequestStatus
+        loading={isPending}
+        error={isError ? getMovieDetailErrorMessage(error) : undefined}
+        onRetry={() => {
+          void refetch();
+        }}
+      />
     );
 
   if (!movie) {

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { getMovies } from "../../api/movies/get-movies";
-import type { TmdbMovieListResponse } from "../../api/movies/models";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { movieListQueryOptions } from "../../queries/movie-query-options";
 import RequestStatus from "../../components/movies/request-status";
 
 import CardSizeControl from "../../components/movies/card-size-control";
@@ -15,7 +15,6 @@ export function MovieListPage() {
       <CardSizeControl />
 
       <MovieListResults
-        key={currentPage}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
       />
@@ -30,38 +29,23 @@ function MovieListResults({
   currentPage: number;
   onPageChange: (page: number) => void;
 }) {
-  const [data, setData] = useState<TmdbMovieListResponse | null>(null);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
-    const controller = new AbortController();
-    getMovies({ page: currentPage, signal: controller.signal })
-      .then((response) => {
-        if (!controller.signal.aborted) setData(response);
-      })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted)
-          setErrorMessage(
-            error instanceof Error &&
-              error.message === "TMDB 환경 변수가 필요해요."
-              ? error.message
-              : "영화 목록을 불러오지 못했어요.",
-          );
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsLoading(false);
-      });
-    return () => controller.abort();
-  }, [currentPage, attempt]);
-  function retry() {
-    setErrorMessage("");
-    setIsLoading(true);
-    setAttempt((value) => value + 1);
-  }
-  if (isLoading || errorMessage)
+  const { data, isPending, isError, error, refetch } = useQuery(
+    movieListQueryOptions(currentPage),
+  );
+  const errorMessage = isError
+    ? error.message === "TMDB 환경 변수가 필요해요."
+      ? error.message
+      : "영화 목록을 불러오지 못했어요."
+    : undefined;
+  if (isPending || isError)
     return (
-      <RequestStatus loading={isLoading} error={errorMessage} onRetry={retry} />
+      <RequestStatus
+        loading={isPending}
+        error={errorMessage}
+        onRetry={() => {
+          void refetch();
+        }}
+      />
     );
   if (!data?.results.length)
     return (
